@@ -1,6 +1,7 @@
 require("dotenv").config();
 const express = require("express");
 const mongoose = require("mongoose");
+const websocketServer = require("websocket").server;
 const cors = require("cors");
 const Card = require("./models/cards");
 const Word = require("./models/word-of-the-day");
@@ -122,7 +123,43 @@ app.post("/addVerb", async (req, res) => {
 });
 
 connectDatabase().then(() => {
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
+  });
+
+  const wsServer = new websocketServer({ httpServer: server, keepalive: true });
+
+  const clients = {};
+
+  const getUniqueID = () => {
+    const s4 = () =>
+      Math.floor((1 + Math.random()) * 0x10000)
+        .toString(16)
+        .substring(1);
+    return s4() + s4() + "-" + s4();
+  };
+
+  wsServer.on("request", function (request) {
+    var userID = getUniqueID();
+    console.log(
+      new Date() +
+        " Recieved a new connection from origin " +
+        request.origin +
+        "."
+    );
+
+    // You can rewrite this part of the code to accept only the requests from allowed origin
+    const connection = request.accept(null, request.origin);
+    clients[userID] = connection;
+    console.log(
+      "connected: " + userID + " in " + Object.getOwnPropertyNames(clients)
+    );
+
+    // for (key in clients) {
+    clients[userID].sendUTF(
+      JSON.stringify({ type: "dbConnection", connected: true })
+    );
+    console.log("sent connected message to: ", clients[userID]);
+    // }
   });
 });
