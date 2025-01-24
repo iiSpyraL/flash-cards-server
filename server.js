@@ -122,14 +122,50 @@ app.post("/addVerb", async (req, res) => {
   }
 });
 
+const clients = {};
+
+const users = {};
+
+function broadcastMessage(json) {
+  const data = JSON.stringify(json);
+
+  for (let userID in clients) {
+    let client = clients[userID];
+    client.sendUTF(data);
+  }
+}
+
+function handleMessage(message, userID) {
+  console.log("message to handle", message);
+  const dataFromClient = JSON.parse(message.utf8Data);
+  console.log(dataFromClient);
+  const json = { type: dataFromClient.type };
+
+  if (dataFromClient.type === "userEvent") {
+    users[userID] = dataFromClient.username;
+    json.data = { users };
+  }
+
+  broadcastMessage(json);
+}
+
+function handleDisconnect(userID) {
+  console.log(userID + " disconnected.");
+  const json = { type: "userEvent" };
+  // const username = users[userID].username || userID;
+  json.data = { users };
+  delete clients[userID];
+  delete users[userID];
+
+  broadcastMessage(json);
+}
+
 connectDatabase().then(() => {
   const server = app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
   });
 
-  const wsServer = new websocketServer({ httpServer: server, keepalive: true });
-
-  const clients = {};
+  const wsServer = new websocketServer({ httpServer: server });
 
   const getUniqueID = () => {
     const s4 = () =>
@@ -155,11 +191,8 @@ connectDatabase().then(() => {
       "connected: " + userID + " in " + Object.getOwnPropertyNames(clients)
     );
 
-    // for (key in clients) {
-    clients[userID].sendUTF(
-      JSON.stringify({ type: "dbConnection", connected: true })
-    );
-    console.log("sent connected message to: ", clients[userID]);
-    // }
+    connection.on("message", (message) => handleMessage(message, userID));
+
+    connection.on("close", () => handleDisconnect(userID));
   });
 });
